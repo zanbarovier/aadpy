@@ -68,6 +68,9 @@ class DCM:
         dcm_mul = self*dcm_2.dcm_transposed()
         return dcm_mul
 
+    def __truediv__(self, dcm_2: "DCM") -> "DCM":
+        return self.__div__(dcm_2)
+
 
 class Quaternion:
     _quaternion: np.ndarray
