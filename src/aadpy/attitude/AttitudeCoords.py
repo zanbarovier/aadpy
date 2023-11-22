@@ -17,6 +17,46 @@ class EulerAngleSequence(IntEnum):
     EA_321 = 11,
 
 
+class AttitudeHelperUtils:
+    @staticmethod
+    def tilde_matrix(vec):
+        """
+        Creates a tilde matrix from an input vector
+        Args:
+            vec (array): Numpy array which is the input vector
+
+        Returns:
+             tilde_mat (array): Numpy array which is the tilde matrix
+        """
+        x1 = vec[0]
+        x2 = vec[1]
+        x3 = vec[2]
+        tilde_mat = np.array([[0, -x3, x2], [x3, 0, -x1], [-x2, x1, 0]])
+
+        return tilde_mat
+
+    @staticmethod
+    def dcm_princ_rot_1(theta: float, rad: bool=False) -> DCM:
+        if not rad:
+            theta = np.radians(theta)
+        dcm = np.array([[1, 0, 0], [0, np.cos(theta), np.sin(theta)], [0, -np.sin(theta), np.cos(theta)]])
+        return DCM(dcm=dcm)
+
+    @staticmethod
+    def dcm_princ_rot_2(theta: float, rad: bool=False) -> DCM:
+        if not rad:
+            theta = np.radians(theta)
+        dcm = np.array([[np.cos(theta), 0, -np.sin(theta)], [0, 1, 0], [np.sin(theta), 0, np.cos(theta)]])
+        return DCM(dcm=dcm)
+
+    @staticmethod
+    def dcm_princ_rot_3(theta:float, rad:bool=False) -> DCM:
+        if not rad:
+            theta = np.radians(theta)
+        dcm = np.array([[np.cos(theta), np.sin(theta), 0], [-np.sin(theta), np.cos(theta), 0], [0, 0, 1]])
+        return DCM(dcm=dcm)
+
+
 class EulerAngles:
     _ea_seq : EulerAngleSequence
     def __init__(self, seq: EulerAngleSequence) -> None:
@@ -39,19 +79,6 @@ class DCM:
     def dcm_transposed(self) -> "DCM":
         return DCM(dcm= self.dcm.T)
 
-    @property
-    def dcm(self) -> np.ndarray:
-        return self._dcm
-
-    @dcm.setter
-    def dcm(self, dcm: np.ndarray) -> None:
-        if type(dcm) != np.ndarray:
-            raise TypeError("Invalid input type %s for dcm, should be np array" % type(dcm))
-
-        #TODO checking that dcm is valid
-
-        self._dcm = dcm
-
     def __repr__(self) -> str:
         dcm_str = f"""DCM=[[{self.dcm[0,0]},{self.dcm[0,1]},{self.dcm[0,2]}],[{self.dcm[1,0]},{self.dcm[1,1]},{self.dcm[1,2]}],[{self.dcm[2,0]},{self.dcm[2,1]},{self.dcm[2,2]}]]"""
         return dcm_str
@@ -71,6 +98,19 @@ class DCM:
     def __truediv__(self, dcm_2: "DCM") -> "DCM":
         return self.__div__(dcm_2)
 
+    @property
+    def dcm(self) -> np.ndarray:
+        return self._dcm
+
+    @dcm.setter
+    def dcm(self, dcm: np.ndarray) -> None:
+        if type(dcm) != np.ndarray:
+            raise TypeError("Invalid input type %s for dcm, should be np array" % type(dcm))
+
+        #TODO checking that dcm is valid
+
+        self._dcm = dcm
+
 
 class Quaternion:
     _quaternion: np.ndarray
@@ -85,17 +125,6 @@ class Quaternion:
     def normalize(self) -> None:
         self._quaternion = self._quaternion / np.linalg.norm(self._quaternion)
 
-    @property
-    def quaternion(self) -> np.ndarray:
-        return self._quaternion
-
-    @quaternion.setter
-    def quaternion(self, quat: np.ndarray) -> None:
-        if not type(quat) == np.ndarray:
-            raise TypeError("Type should be nd array, not", type(quat))
-
-        self._quaternion = quat
-
     def __repr__(self) -> str:
         quat_str = f"Quaternion=[{self._quaternion[0]},{self._quaternion[1]},{self._quaternion[2]},{self._quaternion[3]}]"
         return quat_str
@@ -104,7 +133,7 @@ class Quaternion:
         quat_str = f"[{self._quaternion[0]},{self._quaternion[1]},{self._quaternion[2]},{self._quaternion[3]}]"
         return quat_str
 
-    def __add__(self, quat_2: "Quaternion") -> "Quaternion":
+    def __mul__(self, quat_2: "Quaternion") -> "Quaternion":
         self.normalize()
         quat_2.normalize()
         b1 = self.quaternion
@@ -117,6 +146,56 @@ class Quaternion:
         beta_added = np.matmul(beta2_mat, np.transpose(b1))
         return Quaternion(quat=beta_added)
 
+    def divide_right(self, quat_div: "Quaternion") -> Quaternion:
+        """ Subtracts 2 quaternions , quat1-quat2
+                     -  quat 1 is the left hand side (the product of 2 quaternions) : q1 = q3*q2
+                         where we are solving for q3 (i.e. solving for the left quaternion,
+                         by dividing the right quaternion)"""
+        self.normalize()
+        quat_div.normalize()
+
+        b1 = self.quaternion
+        b2 = quat_div._quaternion
+
+        beta2_mat = np.array(
+            [[b2[0], -b2[1], -b2[2], -b2[3]], [b2[1], b2[0], -b2[3], b2[2]], [b2[2], b2[3], b2[0], -b2[1]],
+             [b2[3], -b2[2], b2[1], b2[0]]])
+
+        b2_mat_inv = np.linalg.inv(beta2_mat)
+
+        b_final = b2_mat_inv.dot(np.transpose(b1))
+        return Quaternion(quat=b_final)
+
+    def divide_left(self, quat_div: "Quaternion") -> Quaternion:
+        """ Subtracts 2 quaternions , quat1-quat2
+             -  quat 1 is the left hand side (the product of 2 quaternions) : q1 = q2*q3
+                 where we are solving for q3 (i.e. solving for the right quaternion,
+                 by dividing the left quaternion)"""
+        self.normalize()
+        quat_div.normalize()
+
+        b1 = self.quaternion
+        b2 = quat_div._quaternion
+
+        beta2_mat = np.array(
+            [[b2[0], -b2[1], -b2[2], -b2[3]], [b2[1], b2[0], b2[3], -b2[2]], [b2[2], -b2[3], b2[0], b2[1]],
+             [b2[3], b2[2], -b2[1], b2[0]]])
+
+        b2_mat_inv = np.linalg.inv(beta2_mat)
+
+        b_final = b2_mat_inv.dot(np.transpose(b1))
+        return Quaternion(quat=b_final)
+
+    @property
+    def quaternion(self) -> np.ndarray:
+        return self._quaternion
+
+    @quaternion.setter
+    def quaternion(self, quat: np.ndarray) -> None:
+        if not type(quat) == np.ndarray:
+            raise TypeError("Type should be nd array, not", type(quat))
+
+        self._quaternion = quat
 
 
 class PRV:
@@ -163,8 +242,91 @@ class CRP:
 
 
 class MRP:
-    def __init__(self) -> None:
-        pass
+    _mrp: np.ndarray
+
+    def __init__(self, mrp: np.ndarray) -> None:
+        self.mrp = mrp
+
+    def __repr__(self) -> str:
+        mrp_str = f"MRP=[{self._mrp[0]},{self._mrp[1]},{self._mrp[2]}]"
+        return mrp_str
+
+    def __str__(self) -> str:
+        mrp_str = f"[{self._mrp[0]},{self._mrp[1]},{self._mrp[2]}]"
+        return mrp_str
+
+    def __add__(self, other: "MRP") -> "MRP":
+        self.short_rotation()
+        other.short_rotation()
+
+        if (self.determinant() - 1) < 0.01 and (other.determinant()) - 1 < 0.01:
+            self.shadow_set()
+
+        s2 = self._mrp
+        s1 = other.mrp
+
+        sig = ((1 - np.dot(s1, s1)) * s2 + (1 - np.dot(s2, s2)) * s1 - 2 * np.cross(s2, s1)) / (
+                1 + np.dot(s1, s1) * np.dot(s2, s2) - 2 * np.dot(s1, s2))
+
+        added_obj = MRP(mrp=sig)
+        added_obj.short_rotation()
+
+        return added_obj
+
+
+    def __sub__(self, other: "MRP") -> "MRP":
+        self.short_rotation()
+        other.short_rotation()
+
+        if (self.determinant() - 1) < 0.01 and (other.determinant()) - 1 < 0.01:
+            self.shadow_set()
+
+        s1 = self._mrp
+        s2 = other.mrp
+
+        sig = ((1 - np.dot(s2, s2)) * s1 - (1 - np.dot(s1, s1)) * s2 + 2 * np.cross(s1, s1)) / (
+                1 + np.dot(s1, s1) * np.dot(s2, s2) + 2 * np.dot(s1, s2))
+
+        sub_obj = MRP(mrp=sig)
+        sub_obj.short_rotation()
+
+        return sub_obj
+
+    def norm(self) -> float:
+        return np.linalg.norm(self._mrp)
+
+    def determinant(self) -> float:
+        return np.linalg.norm(self._mrp) ** 2
+
+    def shadow_set(self) -> "MRP":
+        self.mrp = -self._mrp/(np.power(np.linalg.norm(self._mrp), 2))
+        return self
+
+    def inverse_rotation(self) -> "MRP":
+        self._mrp *= -1
+        return self
+
+    def short_rotation(self) -> "MRP":
+        if self.norm() >= 1:
+            self.shadow_set()
+
+        return self
+
+    def long_rotation(self) -> "MRP":
+        if self.norm() <= 1:
+            self.shadow_set()
+
+        return self
+
+    @property
+    def mrp(self) -> np.ndarray:
+        return self._mrp
+
+    @mrp.setter
+    def mrp(self, mrp: np.ndarray) -> None:
+        self._mrp = mrp
+
+
 
 class AttitudeConverter:
     @staticmethod
@@ -240,3 +402,45 @@ class AttitudeConverter:
         quaternion = Quaternion(quat=quat)
 
         return quaternion
+
+
+    @staticmethod
+    def mrp_to_dcm(mrp: MRP) -> DCM:
+        sig = mrp.mrp
+        sig_tilde = AttitudeHelperUtils.tilde_matrix(sig)
+        dcm = np.identity(3) + (1 / ((1 + np.dot(sig, sig)) ** 2)) * (
+                8 * np.dot(sig_tilde, sig_tilde) - 4 * (1 - (np.dot(sig, sig))) * sig_tilde)
+        dcm_obj = DCM(dcm=dcm)
+        return dcm_obj
+
+    @staticmethod
+    def dcm_to_mrp(dcm_obj: DCM) -> MRP:
+        dcm = dcm_obj.dcm
+        zeta = np.sqrt(np.trace(dcm) + 1)
+        sig = (1 / (zeta * (zeta + 2))) * np.array(
+            [dcm[1, 2] - dcm[2, 1], dcm[2, 0] - dcm[0, 2], dcm[0, 1] - dcm[1, 0]])
+        mrp = MRP(mrp=sig)
+        mrp.shadow_set()
+        return mrp
+
+    @staticmethod
+    def mrp_to_quat(mrp: MRP) -> Quaternion:
+        sig = mrp.mrp
+        beta0 = (1 - np.dot(sig, sig)) / (1 + np.dot(sig, sig))
+        beta1 = 2 * sig[0] / (1 + np.dot(sig, sig))
+        beta2 = 2 * sig[1] / (1 + np.dot(sig, sig))
+        beta3 = 2 * sig[2] / (1 + np.dot(sig, sig))
+
+        beta = np.array([beta0, beta1, beta2, beta3])
+        beta = beta / np.linalg.norm(beta)  # check quat is normalized
+        quat = Quaternion(quat=beta)
+        return quat
+
+    @staticmethod
+    def quat_to_mrp(quat: Quaternion) -> MRP:
+        beta = quat.quaternion
+        sig = (1 / (1 + beta[0])) * beta[1:]
+        mrp = MRP(mrp=sig)
+        mrp.shadow_set()
+        return mrp
+
